@@ -4,8 +4,12 @@ import java.io.File;
 import java.io.FileReader;
 import java.io.InputStreamReader;
 import java.io.Reader;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.List;
+import java.util.Map;
+
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpResponse;
 import org.apache.http.auth.UsernamePasswordCredentials;
@@ -39,6 +43,7 @@ public class JsonModel extends CachedModel<Object> {
 	protected String username;
 	protected String password;
 	protected Object root;
+	protected List<Object> allObjects;
 	
 	public JsonModel() {
 		propertyGetter = new JsonPropertyGetter();
@@ -97,12 +102,18 @@ public class JsonModel extends CachedModel<Object> {
 
 	@Override
 	public Object getElementById(String id) {
-		throw new UnsupportedOperationException();
+		for (Object object : allObjects) {
+			if (this.getElementId(object).equals(id)) {
+				return object;
+			}
+		}
+		return null;
 	}
 
 	@Override
 	public String getElementId(Object instance) {
-		throw new UnsupportedOperationException();
+		Object id = ((JSONObject) instance).get("id"); 
+		return id instanceof String ? (String) id : "";
 	}
 
 	@Override
@@ -149,15 +160,16 @@ public class JsonModel extends CachedModel<Object> {
 
 	@Override
 	protected Collection<Object> allContentsFromModel() {
-		// TODO Auto-generated method stub
-		return null;
+		return allObjects;
 	}
 
 	@Override
 	protected Collection<Object> getAllOfTypeFromModel(String type)
 			throws EolModelElementTypeNotFoundException {
-		// TODO Auto-generated method stub
-		return null;
+		if (!"JSONObject".equals(type)) {
+			throw new EolModelElementTypeNotFoundException(this.name, type);
+		}
+		return allContents();
 	}
 
 	@Override
@@ -221,6 +233,7 @@ public class JsonModel extends CachedModel<Object> {
 					reader = new FileReader(file);
 				}
 				root = JSONValue.parse(reader);
+				allObjects = parseObjects();
 			}
 		}
 		catch (Exception ex) {
@@ -252,5 +265,53 @@ public class JsonModel extends CachedModel<Object> {
 	
 	public boolean isLoaded() {
 		return root != null;
+	}
+	
+	protected List<Object> parseObjects() {
+		
+		List<Object> objects = new ArrayList<Object>(); 
+		
+		if (root == null) {
+			return objects;
+		}
+		
+		if (root instanceof JSONObject) {
+			objects.add((JSONObject) root);
+			objects.addAll(this.parseObjectsRecursively((JSONObject) root));
+		} else if (root instanceof JSONArray) {
+			for(Object entry : ((JSONArray) root)) {
+				if (entry instanceof JSONObject) {
+					objects.add((JSONObject) entry);
+					objects.addAll(this.parseObjectsRecursively((JSONObject) entry));
+				}
+			}
+		}
+		
+		return objects;
+	}
+	
+	/**
+	 * Recursively collect all instances of "JSONObject" contained in the given parent.
+	 * @param parent
+	 * @return
+	 */
+	protected List<Object> parseObjectsRecursively(JSONObject parent) {
+		List<Object> objects = new ArrayList<Object>(); 
+		
+		for (Object child : parent.values()) {
+			if (child instanceof JSONObject) {
+				objects.add((JSONObject) child);
+				objects.addAll(this.parseObjectsRecursively((JSONObject) child));
+			} else if (child instanceof JSONArray) {
+				for(Object entry : ((JSONArray) child)) {
+					if (entry instanceof JSONObject) {
+						objects.add((JSONObject) entry);
+						objects.addAll(this.parseObjectsRecursively((JSONObject) entry));
+					}
+				}
+			}
+		}
+		
+		return objects;
 	}
 }
